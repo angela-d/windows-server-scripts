@@ -204,10 +204,6 @@ if ($sendOfflineQueueEmail -eq 1) {
         body   = "$zendeskCommentBody";
       };
 
-  custom_fields = @{
-    id = "360003905293";
-    value ="Technology Department";
-  };
       tags = "$Tags.Split(',')"
       }
     }
