@@ -8,6 +8,8 @@ This script was originally put together for an environment that uses **virtual**
 
 If you *don't* have queues with **physical** in the name, be sure to change the `$physicalOnly` variable to **0**.  That may work for you out of the box (but not tested in such environments).
 
+A switch to open a Zendesk ticket, with code components from [PRTG Zendesk Webhook](https://github.com/angela-d/prtg-zendesk-webhook) (PRTG is not required for auto-opening Zendesk tickets)
+
 Other configurable options:
 - **$deleteProblems** = Whether or not you want to auto-delete the print causing errors, or just sent an email notification
 - **$smtpServer** = Hostname of your mail server
@@ -16,6 +18,7 @@ Other configurable options:
 - **$to** = Primary recipient of the notifications
 - **$cc** = CC recipient of the notifications
 - **$printServer** = Hostname of your print server
+- **$useZendesk** = Whether or not you want to open a Zendesk ticket when a printer queue is offline (subsequent variables are for Zendesk users, only)
 
 ## Caveats
 Don't run with `$deleteProblems` active until you test problem scenarios.
