@@ -1,6 +1,15 @@
 # Track Printer Errors on Windows Print Servers
 Small script that can be run manually (or as a scheduled task) to monitor print queues for errors, with the option to auto-delete the problem print from the queue, with an optional email notification.
 
+## Latest Update
+11/24/21
+
+- Fixed an 'existing ticket' bug; if you have this script running on a task scheduler, you won't get flooded with numerous tickets for the same issue any longer!
+  - An existing ticket with the status of **new** or **open** will prevent further tickets from getting created
+
+- Fixed tags bug
+- Changed linefeed from LF to CRLF
+
 ## Pre-requisites
 Out of the box, this may or may not work in your environment without customizations.
 
