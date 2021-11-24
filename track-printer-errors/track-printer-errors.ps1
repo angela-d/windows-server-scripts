@@ -133,17 +133,21 @@ foreach ($printer in $printerErr) {
 
       # email notification
       if ($sendNotifcation -eq 1) {
-        $subject = "$jobDocument Printing Error by $jobOwner"
-        Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "The following job is in an error state and needs to be manually checked:`n$body" -SmtpServer $smtpServer -port $smtpPort
-        Write-Host "Email sent to $to and $cc"
+        if ($useZendesk -eq 0 -or ($useZendesk -eq 1 -and $existingNewTickets -eq 0)) {
+          $subject = "$jobDocument Printing Error by $jobOwner"
+          Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "The following job is in an error state and needs to be manually checked:`n$body" -SmtpServer $smtpServer -port $smtpPort
+          Write-Host "Email sent to $to and $cc"
+        }
       }
     }
 }
 
 if ($sendOfflineQueueEmail -eq 1) {
 
-  Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "$body" -SmtpServer $smtpServer -port $smtpPort
-  Write-Host "Email sent to $to and $cc"
+  if ($useZendesk -eq 0 -or ($useZendesk -eq 1 -and $existingNewTickets -eq 0)) {
+    Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "$body" -SmtpServer $smtpServer -port $smtpPort
+    Write-Host "Email sent to $to and $cc"
+  }
 
   if ($useZendesk -eq 1) {
     # open a zendesk ticket for printers in offline state
@@ -157,32 +161,29 @@ if ($sendOfflineQueueEmail -eq 1) {
     # find existing tickets, if any
     $Transaction = @{
 
-      query = "subject:$printerPrefix offline<solved tags:printer-offline";
+      query = "subject:$zendeskTicketSubject status:new status:open";
+
+    }
+
+    $searchQuery = $Transaction['query']
+
+    if ($debug -eq 1) {
+
+        $warnOutput = "WARNING: If your subject doesn't match the subject query below, you'll get blasted with tickets!:`n$searchQuery"
+        Write-Output $warnOutput | Out-File $logPath -Append
 
     }
 
     $SearchResults = Call-ZenDesk '/api/v2/search.json' Get $Transaction
-    Write-Host "Search results count: $($SearchResults.count)"
+    $existingNewTickets = $($SearchResults.count)
+    Write-Host "Search results count: $existingNewTickets"
 
     # Update existing ticket or create new
-    if ($SearchResults.count -gt 0) {
+    if ($existingNewTickets -ge 1) {
 
       # there is at least one open ticket for this device tagged with PRTG
       $Ticket = $SearchResults.results.Item(0)
-      Write-Host "Found a ticket! Updating ticket #$($Ticket.id)"
-
-      $Transaction = @{
-        ticket = @{
-          comment = @{
-            public    = $false;
-            body      = $zendeskCommentBody;
-            author_id = $zendeskAuthor;
-          }
-        }
-      }
-
-      $zendeskBody = ConvertTo-Json($Transaction)
-      Call-ZenDesk "/api/v2/tickets/$($Ticket.id).json" Put $zendeskBody
+      Write-Host "Found an existing ticket! #$($Ticket.id) - not updating/creating further."
 
   } elseif ($zendeskCommentBody -notlike '*OK*') {
 
@@ -204,14 +205,19 @@ if ($sendOfflineQueueEmail -eq 1) {
         body   = "$zendeskCommentBody";
       };
 
-      tags = "$Tags.Split(',')"
+      tags = "$Tags"
       }
     }
 
+    if ($debug -eq 0) {
+
+        Write-Host "`nTicket hashtable:`n" ($($Transaction['ticket']) | Out-String)
+
+    }
     $zendeskBody = ConvertTo-Json $Transaction
 
     Call-ZenDesk "/api/v2/tickets.json" Post $zendeskBody
-    Write-Host "Opened a Zendesk ticket: $zendeskCommentBody"
+    Write-Host "Opened a Zendesk ticket: $zendeskTicketSubject `nTicket body: $zendeskCommentBody"
     }
   }
 }
