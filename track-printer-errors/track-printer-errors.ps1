@@ -6,6 +6,7 @@ $smtpPort       = "25"
 $from           = "noreply@example.com"
 $to             = "me@example.com"
 $cc             = "helpdesk@example.com"
+$ignoreQueue    = "none*"
 # netbios name or tld
 $printServer    = "print"
 
@@ -18,7 +19,7 @@ $zendeskAuthor = "000012345678"
 $prtgName      = "PRTG"
 $prtgEmail     = "prtg@example.com"
 $zendeskURI    = "https://example.zendesk.com"
-$debug         = 0 # set to 1 if you want to save a log file to the location referenced in $logPath
+$debug         = 0 # set to 1 if you want to save a log file to the location referenced in $logPath, will also prevent emails & tickets from sending
 $logPath       = "C:\Users\youruser\Desktop\log.txt"
 
 
@@ -46,8 +47,7 @@ if ($physicalOnly -eq 1) {
 
     Write-Information "Searching through physical + virtual queues..."
     # only collect errors from physical queues
-    $printerErr = Get-WMIObject win32_printer  -computername $printServer  | Select Name, PrinterState, PrinterStatus
-
+    $printerErr = Get-WMIObject win32_printer  -computername $printServer | Select Name, PrinterState, PrinterStatus
 } else {
 
     Write-Information "Searching through virtual queues only..."
@@ -71,6 +71,10 @@ foreach ($printer in $printerErr) {
       $zendeskTicketSubject = "$printerPrefix Printer Issue"
       $Message              = "$printerPrefix queues are in an offline/error state, please restart the printer."
 
+      if ($printerPrefix -like $ignoreQueue) {
+          $sendOfflineQueueEmail = "0"
+          Write-Warning "$printerPrefix is currently set to be ignored, so no notifications will be sent."
+      }
       # if you want to log something other than the $Message var, simply replace the references in the conditional code block
       if ($debug -eq 1 -AND (Test-Path $logPath)) {
 
@@ -89,7 +93,7 @@ foreach ($printer in $printerErr) {
 
       # physical printer searches only
       # isolate the problematic print on the printer with error status
-      $jobErrors = Get-WMIObject -class Win32_PrintJob -computername $printServer | Where-Object { ($_.Status -eq "Error") -and ($_.Name -eq "$printerPrefix") }
+      $jobErrors = Get-WMIObject -class Win32_PrintJob -computername $printServer | Where-Object { ($_.Status -eq "Error") -and ($_.Name -eq "$printerPrefix") -and ($_.Name -notlike "$ignoreQueue") }
 
     } else {
 
@@ -98,7 +102,7 @@ foreach ($printer in $printerErr) {
 
       # isolate the problematic print on the printer with error status
       # we wildcard the printer here, because the job id is affixed, otherwise
-      $jobErrors = Get-WMIObject -class Win32_PrintJob -computername $printServer | Where-Object { ($_.Name -like "$printerPrefix*") }
+      $jobErrors = Get-WMIObject -class Win32_PrintJob -computername $printServer | Where-Object { ($_.Name -like "$printerPrefix*") -and ($_.Name -notlike "$ignoreQueue") }
 
     }
 
@@ -135,18 +139,26 @@ foreach ($printer in $printerErr) {
       if ($sendNotifcation -eq 1) {
         if ($useZendesk -eq 0 -or ($useZendesk -eq 1 -and $existingNewTickets -eq 0)) {
           $subject = "$jobDocument Printing Error by $jobOwner"
-          Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "The following job is in an error state and needs to be manually checked:`n$body" -SmtpServer $smtpServer -port $smtpPort
-          Write-Host "Email sent to $to and $cc"
+          if ($debug -eq 0) {
+            Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "The following job is in an error state and needs to be manually checked:`n$body" -SmtpServer $smtpServer -port $smtpPort
+            Write-Host "Email sent to $to and $cc"
+        } else {
+          Write-Host "Debug mode is active, so no emails will send."
         }
       }
     }
+  }
 }
 
 if ($sendOfflineQueueEmail -eq 1) {
 
   if ($useZendesk -eq 0 -or ($useZendesk -eq 1 -and $existingNewTickets -eq 0)) {
-    Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "$body" -SmtpServer $smtpServer -port $smtpPort
-    Write-Host "Email sent to $to and $cc"
+    if ($debug -eq 0) {
+      Send-MailMessage -From $from -To $to -CC $cc -Subject $subject -Body "$body" -SmtpServer $smtpServer -port $smtpPort
+      Write-Host "Email sent to $to and $cc"
+    } else {
+      Write-Host "Debug mode is active, so no emails will send."
+    }
   }
 
   if ($useZendesk -eq 1) {
@@ -169,8 +181,8 @@ if ($sendOfflineQueueEmail -eq 1) {
 
     if ($debug -eq 1) {
 
-        $warnOutput = "WARNING: If your subject doesn't match the subject query below, you'll get blasted with tickets!:`n$searchQuery"
-        Write-Output $warnOutput | Out-File $logPath -Append
+      $warnOutput = "WARNING: If your subject doesn't match the subject query below, you'll get blasted with tickets!:`n$searchQuery"
+      Write-Output $warnOutput | Out-File $logPath -Append
 
     }
 
@@ -211,13 +223,16 @@ if ($sendOfflineQueueEmail -eq 1) {
 
     if ($debug -eq 0) {
 
-        Write-Host "`nTicket hashtable:`n" ($($Transaction['ticket']) | Out-String)
+      Write-Host "`nTicket hashtable:`n" ($($Transaction['ticket']) | Out-String)
 
     }
-    $zendeskBody = ConvertTo-Json $Transaction
-
-    Call-ZenDesk "/api/v2/tickets.json" Post $zendeskBody
-    Write-Host "Opened a Zendesk ticket: $zendeskTicketSubject `nTicket body: $zendeskCommentBody"
+    if ($debug -eq 0) {
+      $zendeskBody = ConvertTo-Json $Transaction
+      Call-ZenDesk "/api/v2/tickets.json" Post $zendeskBody
+      Write-Host "Opened a Zendesk ticket: $zendeskTicketSubject `nTicket body: $zendeskCommentBody"
+    } else {
+      Write-Host "Debug mode is active, so no ticket will be opened."
+    }
     }
   }
 }
